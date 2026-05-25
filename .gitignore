@@ -1,0 +1,46 @@
+# envs
+.env
+.env.local
+*.env
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+uv.lock
+
+# node / bun
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+bun.lockb
+bun.lock
+*.tsbuildinfo
+
+# editors
+.idea/
+.vscode/
+.DS_Store
+
+# data
+pgdata/
+grafana-data/
+*.sqlite
+*.db
+*.log
+
+# docker
+.docker/

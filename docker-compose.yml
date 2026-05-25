@@ -1,0 +1,121 @@
+name: ollive
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ollive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ollive}
+      POSTGRES_DB: ${POSTGRES_DB:-ollive}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    # No host port binding by default — avoids conflicts with a local Postgres.
+    # Use `docker compose exec postgres psql -U ollive -d ollive` from the host.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ollive} -d ${POSTGRES_DB:-ollive}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    # No host port binding by default — avoids conflicts with a local Redis.
+    # Use `docker compose exec redis redis-cli` from the host.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: apps/ingestion/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ollive}:${POSTGRES_PASSWORD:-ollive}@postgres:5432/${POSTGRES_DB:-ollive}
+      REDIS_URL: redis://redis:6379/0
+      INFERENCE_STREAM: ${INFERENCE_STREAM:-inference:logs}
+      INFERENCE_DLQ: ${INFERENCE_DLQ:-inference:logs:dlq}
+      INFERENCE_GROUP: ${INFERENCE_GROUP:-ingest}
+      INFERENCE_CONSUMER: ${INFERENCE_CONSUMER:-worker-1}
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request, sys; urllib.request.urlopen(\"http://localhost:8001/healthz\")' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  chat-api:
+    build:
+      context: .
+      dockerfile: apps/chat-api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ollive}:${POSTGRES_PASSWORD:-ollive}@postgres:5432/${POSTGRES_DB:-ollive}
+      REDIS_URL: redis://redis:6379/0
+      INGESTION_URL: http://ingestion:8001
+      INFERENCE_STREAM: ${INFERENCE_STREAM:-inference:logs}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      DEFAULT_PROVIDER: ${DEFAULT_PROVIDER:-openai}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-gpt-4o-mini}
+      ALLOWED_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:  { condition: service_healthy }
+      redis:     { condition: service_healthy }
+      ingestion: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/healthz\")' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_CHAT_API_URL: ${NEXT_PUBLIC_CHAT_API_URL:-http://localhost:8000}
+      CHAT_API_URL: http://chat-api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      chat-api: { condition: service_started }
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    depends_on:
+      ingestion: { condition: service_started }
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      prometheus: { condition: service_started }
+
+volumes:
+  pgdata:
+  grafana-data:

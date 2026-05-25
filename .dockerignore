@@ -1,0 +1,29 @@
+# keep build context small + correct
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+
+**/.git
+**/.env
+**/.env.*
+!**/.env.example
+
+**/.DS_Store
+**/.idea
+**/.vscode
+
+pgdata/
+grafana-data/
+
+# scratch
+*.log
+*.tmp
