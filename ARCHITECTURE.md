@@ -42,31 +42,13 @@
 | Postgres down | Worker logs the error, sends to DLQ. Chat API itself fails fast on `/chat` (cannot persist messages) — by design; logs being durable in Redis means we can replay once Postgres recovers. |
 | Provider key missing | `/providers` only advertises providers whose key is set. The UI dropdown reflects this and disables Send if no provider exists. |
 
-## Demo script (Loom outline, ~5 min)
+## Demo walkthrough (~5 min)
 
 1. `docker compose up --build` — point out: postgres, redis, ingestion (workers), chat-api, web, prometheus, grafana boot together with healthchecks; one command.
 2. Open http://localhost:3000 — show provider picker pulling from `/providers`. Pick OpenAI, send "what is consistent hashing in two sentences". Tokens stream in. Click cancel mid-stream → response halts; "cancelled" badge appears.
 3. Reload `/conversations` — see the conversation with status `cancelled`. Click into it → message history loads (resume).
-4. Switch provider to Anthropic, send another message → tokens stream from the new provider.
+4. Switch provider to Gemini, send another message → tokens stream from the new provider.
 5. PII demo: send "my email is foo@bar.com, phone +91 90000 11111" → open Postgres (`docker compose exec postgres psql -U ollive -d ollive`) and `SELECT request_preview FROM inference_logs ORDER BY started_at DESC LIMIT 1;` — shows `[REDACTED:EMAIL]`, `[REDACTED:PHONE]`.
 6. Run `uv run scripts/load_test.py --n 50 --concurrency 10` against an installed provider key. Open Grafana → "LLM Observability" → panels show requests/sec climb, latency p95/p99 by provider, TTFT, throughput by status, token rate.
-7. Kill the ingestion container — send a new chat → mention SDK falls back to HTTP `/ingest`. Restart ingestion — old stream entries drain via the consumer group from the last ack.
+7. Show the event pipeline working: `docker compose exec redis redis-cli XLEN inference:logs` (stream depth), `docker compose exec redis redis-cli XLEN inference:logs:dlq` (DLQ stays empty under normal load), and a quick `SELECT provider, status, count(*) FROM inference_logs GROUP BY 1, 2;` against Postgres.
 8. `kubectl apply -f infra/k8s` against a `kind` cluster — show pods come up, port-forward web, send a chat. Same flow runs unchanged in k8s.
-
-## Submission email (draft)
-
-> Subject: Ollive Founding Fullstack — assignment submission
->
-> Hi,
->
-> Here is my submission for the Founding Fullstack take-home.
->
-> - Repo: <https://github.com/$you/OliveAssign>
-> - Demo: <Loom link>
-> - Architecture notes: in `ARCHITECTURE.md` (ingestion flow, logging strategy, scaling, failure handling).
->
-> Implemented all of: multi-provider streaming (OpenAI, Anthropic, Gemini), event-based logging via Redis Streams with a DLQ, Postgres storage with sensible schema/indexes, PII redaction, latency / throughput / errors dashboards in Grafana, Docker Compose one-command boot, k8s manifests for kind/minikube, and the frontend bonuses (cancel mid-stream, list conversations, resume any conversation).
->
-> Happy to walk through tradeoffs over a call.
->
-> — <name>

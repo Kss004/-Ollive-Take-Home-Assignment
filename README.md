@@ -155,15 +155,29 @@ docker-compose.yml
 .env.example
 ```
 
-## Demo
+## Tests
 
-Loom script in `ARCHITECTURE.md` § Demo script.
+```bash
+# Unit (redact + ingestion schema)
+PYTHONPATH=apps/ingestion uv --directory apps/ingestion run \
+    --with pytest --with pytest-asyncio \
+    --with-editable packages/llm_sdk \
+    pytest tests/test_redact.py tests/test_ingestion_schema.py -v
 
-## Submission
+# End-to-end against a running stack (skips automatically if stack is down)
+docker compose run --rm \
+    -v "$PWD/tests:/repo/tests:ro" \
+    -e CHAT_API_URL_E2E=http://chat-api:8000 \
+    -e INGEST_API_URL_E2E=http://ingestion:8001 \
+    -e DATABASE_URL_E2E=postgresql://ollive:ollive@postgres:5432/ollive \
+    --entrypoint sh ingestion -c "uv pip install -q pytest pytest-asyncio && \
+        PYTHONPATH=/repo/apps/ingestion uv run pytest /repo/tests/test_e2e_flow.py -v"
+```
 
-Send to `work@ollive.ai`:
-- GitHub repo URL
-- Loom link
-- Pointer to `ARCHITECTURE.md`
+The E2E suite covers: health, providers, conversation CRUD, OpenAI + Gemini
+streaming, mid-stream cancel, PII redaction roundtrip, DLQ on bad payload,
+archived conversation rejection, and unknown-provider fast-fail.
 
-Suggested email body lives in `ARCHITECTURE.md` § Submission email.
+## Demo walkthrough
+
+Step-by-step walkthrough lives in [`ARCHITECTURE.md`](./ARCHITECTURE.md) § Demo walkthrough.
