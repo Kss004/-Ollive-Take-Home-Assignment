@@ -27,7 +27,6 @@ dist/
 build/
 .turbo/
 bun.lockb
-bun.lock
 *.tsbuildinfo
 
 # editors
