@@ -54,12 +54,17 @@ async def create_conversation(body: CreateConversation, request: Request) -> Con
     return _row_to_conv(row)
 
 
+_VALID_STATUSES = {"active", "cancelled", "archived"}
+
+
 @router.get("", response_model=list[ConversationOut])
 async def list_conversations(
     request: Request,
     limit: int = Query(50, ge=1, le=200),
     status: Optional[str] = None,
 ) -> list[ConversationOut]:
+    if status is not None and status not in _VALID_STATUSES:
+        raise HTTPException(400, f"status must be one of {sorted(_VALID_STATUSES)}")
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         if status:

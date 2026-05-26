@@ -100,6 +100,8 @@ export function Chat({
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
+        // Normalize CRLF to LF to avoid issues with standard SSE endings (\r\n\r\n -> \n\n)
+        buffer = buffer.replace(/\r\n/g, "\n");
         let idx: number;
         // SSE frames are separated by blank lines
         while ((idx = buffer.indexOf("\n\n")) !== -1) {
@@ -233,8 +235,15 @@ function parseSSE(frame: string): { event: string; data: string } | null {
   let event = "message";
   const dataLines: string[] = [];
   for (const line of frame.split("\n")) {
-    if (line.startsWith("event:")) event = line.slice(6).trim();
-    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      // SSE spec: strip at most ONE optional space after "data:"; any further
+      // whitespace is part of the content (matters for tokens like " and").
+      let v = line.slice(5);
+      if (v.startsWith(" ")) v = v.slice(1);
+      dataLines.push(v);
+    }
   }
   if (dataLines.length === 0) return null;
   return { event, data: dataLines.join("\n") };
